@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>ABDULLAH SOLAR COMMAND — Gesture-Controlled 3D Solar System</title>
+  <meta name="description" content="Spatial-computing interactive 3D Solar System controlled via device camera and natural hand gestures." />
+
+  <!-- Google Fonts: Orbitron, Rajdhani, Space Grotesk -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Space+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- App Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Three.js (r128) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- Google MediaPipe Hands & Camera Utils -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <!-- Layer 1: Three.js Main 3D Solar System Canvas -->
+  <canvas id="solar-canvas"></canvas>
+
+  <!-- Layer 2: Transparent Holographic Hand Skeleton Overlay Canvas -->
+  <canvas id="skeleton-canvas"></canvas>
+
+  <!-- Virtual Holographic Hand Cursor -->
+  <div id="virtual-cursor" class="virtual-cursor hidden">
+    <div class="cursor-crosshair ch-top"></div>
+    <div class="cursor-crosshair ch-bottom"></div>
+    <div class="cursor-crosshair ch-left"></div>
+    <div class="cursor-crosshair ch-right"></div>
+    <div class="cursor-reticle"></div>
+    <div class="cursor-dot"></div>
+    <div class="cursor-badge" id="cursor-badge">POINTER</div>
+  </div>
+
+  <!-- Dynamic Planet Targeting Reticle (Follows targeted planet in 3D) -->
+  <div id="planet-target-box" class="planet-target-box hidden">
+    <div class="target-bracket tb-tl"></div>
+    <div class="target-bracket tb-tr"></div>
+    <div class="target-bracket tb-bl"></div>
+    <div class="target-bracket tb-br"></div>
+    <div class="target-card">
+      <div class="target-header">
+        <span class="target-crest">◎</span>
+        <span class="target-name" id="target-planet-name">EARTH</span>
+      </div>
+      <div class="target-action" id="target-action-label">PINCH TO SELECT</div>
+    </div>
+    <div class="target-stem"></div>
+  </div>
+
+  <!-- First-Time Hand Detection Guidance Banner -->
+  <div id="user-guidance" class="user-guidance hidden">
+    <div class="guidance-content glass-panel">
+      <div class="guidance-title">
+        <span class="glow-dot"></span>
+        <span>HAND DETECTED // OPTICAL SENSOR SYNCHRONIZED</span>
+      </div>
+      <div class="guidance-instructions">
+        <span>☝ Point index finger to target &bull; 🤏 Pinch to grab/zoom</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Paused Simulation Overlay (Open Palm) -->
+  <div id="paused-overlay" class="paused-overlay">
+    <div class="paused-vignette"></div>
+    <div class="paused-scanlines"></div>
+    <div class="paused-banner">
+      <span class="paused-code">ORBITAL TIME DYNAMICS HALTED</span>
+      <span class="paused-title">SYSTEM PAUSED</span>
+      <span class="paused-sub">RELEASE OPEN PALM OR PRESS [SPACE] TO RESUME SIMULATION</span>
+    </div>
+  </div>
+
+  <!-- Scientific Command HUD (Active Immediately - Zero Permission Blockers) -->
+  <main id="command-hud" class="command-hud">
+    <!-- Top Command Bar -->
+    <header class="top-command-bar glass-panel">
+      <div class="bar-left">
+        <div class="hud-logo-block">
+          <span class="hud-main-title">ABDULLAH SOLAR CONTROL</span>
+          <span class="hud-subtitle">GESTURE SYSTEM</span>
+        </div>
+      </div>
+
+      <div class="bar-center">
+        <div class="mission-tag">
+          <span class="mission-dot"></span>
+          <span class="mission-text" id="mission-status-text">MISSION: ORBITAL OVERVIEW</span>
+        </div>
+      </div>
+
+      <div class="bar-right">
+        <button class="telemetry-pill hud-pill-toggle" id="pill-camera" title="Click to Connect Camera Tracking (Optional)">
+          <span class="pill-dot" id="cam-indicator-dot"></span>
+          <span class="pill-text" id="cam-status-label">CAM: OFF</span>
+        </button>
+
+        <div class="telemetry-pill" id="pill-hand">
+          <span class="pill-dot" id="hand-indicator-dot"></span>
+          <span class="pill-text" id="hand-status-label">HAND: NONE</span>
+        </div>
+
+        <div class="fps-pill" id="fps-pill">
+          <span id="fps-display">60 FPS</span>
+        </div>
+
+        <button id="btn-toggle-fleet" class="hud-pill-btn" title="Toggle Fleet Directory">
+          <span>🌌 FLEET</span>
+        </button>
+
+        <button id="btn-toggle-dossier" class="hud-pill-btn active" title="Toggle Celestial Dossier">
+          <span>📋 DOSSIER</span>
+        </button>
+
+        <button id="btn-toggle-manual" class="hud-pill-btn" title="Toggle Gesture Manual">
+          <span>✦ MANUAL</span>
+        </button>
+
+        <button id="btn-toggle-sound" class="hud-icon-btn" title="Toggle Audio (M)" aria-label="Audio">
+          <span id="sound-icon">🔊</span>
+        </button>
+
+        <button id="btn-open-settings" class="hud-icon-btn" title="Settings" aria-label="Settings">
+          <span>⚙</span>
+        </button>
+
+        <button id="btn-toggle-fullscreen" class="hud-icon-btn" title="Fullscreen" aria-label="Fullscreen">
+          <span id="fullscreen-icon">⛶</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Bottom Left: System Telemetry & Celestial Fleet Directory Block -->
+    <aside class="system-status-panel glass-panel" id="system-status-panel">
+      <div class="panel-header">
+        <div class="fleet-header-title">
+          <span class="panel-title">CELESTIAL FLEET</span>
+          <span class="fleet-count-tag">10 BODIES</span>
+        </div>
+        <button id="btn-close-fleet" class="panel-close-btn" title="Close Fleet Panel">✕</button>
+      </div>
+
+      <!-- Quick System Telemetry Status Strip -->
+      <div class="fleet-sys-strip">
+        <div class="strip-item">
+          <span class="strip-lbl">SIM:</span>
+          <span class="strip-val highlight-active" id="status-sim-label">RUNNING</span>
+        </div>
+        <div class="strip-item">
+          <span class="strip-lbl">BELT:</span>
+          <span class="strip-val">600 ROCKS</span>
+        </div>
+        <div class="strip-item">
+          <span class="strip-lbl">SENSOR:</span>
+          <span class="strip-val" id="status-hand-label">WAITING</span>
+        </div>
+      </div>
+
+      <!-- Scrollable Celestial Body Fleet Directory -->
+      <div class="fleet-directory-list" id="fleet-directory-list">
+        <button class="fleet-item" data-body-id="sun">
+          <span class="planet-swatch swatch-sun"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">SOL</span>
+            <span class="fleet-item-class">G2V YELLOW DWARF STAR</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+        <button class="fleet-item" data-body-id="mercury">
+          <span class="planet-swatch swatch-mercury"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">MERCURY</span>
+            <span class="fleet-item-class">TERRESTRIAL &bull; 0.39 AU</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+        <button class="fleet-item" data-body-id="venus">
+          <span class="planet-swatch swatch-venus"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">VENUS</span>
+            <span class="fleet-item-class">SULFUR CLOUD &bull; 0.72 AU</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+        <button class="fleet-item active" data-body-id="earth">
+          <span class="planet-swatch swatch-earth"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">EARTH</span>
+            <span class="fleet-item-class">BIOSPHERE &bull; 1.00 AU</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+        <button class="fleet-item" data-body-id="moon">
+          <span class="planet-swatch swatch-moon"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">LUNA (MOON)</span>
+            <span class="fleet-item-class">NATURAL SATELLITE</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+        <button class="fleet-item" data-body-id="mars">
+          <span class="planet-swatch swatch-mars"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">MARS</span>
+            <span class="fleet-item-class">RED DESERT &bull; 1.52 AU</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+        <button class="fleet-item" data-body-id="jupiter">
+          <span class="planet-swatch swatch-jupiter"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">JUPITER</span>
+            <span class="fleet-item-class">GAS GIANT &bull; 5.20 AU</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+        <button class="fleet-item" data-body-id="saturn">
+          <span class="planet-swatch swatch-saturn"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">SATURN</span>
+            <span class="fleet-item-class">RINGED GIANT &bull; 9.58 AU</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+        <button class="fleet-item" data-body-id="uranus">
+          <span class="planet-swatch swatch-uranus"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">URANUS</span>
+            <span class="fleet-item-class">ICE GIANT &bull; 19.22 AU</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+        <button class="fleet-item" data-body-id="neptune">
+          <span class="planet-swatch swatch-neptune"></span>
+          <div class="fleet-item-info">
+            <span class="fleet-item-name">NEPTUNE</span>
+            <span class="fleet-item-class">AZURE ICE &bull; 30.05 AU</span>
+          </div>
+          <span class="fleet-item-action">FOCUS ❯</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Bottom Right: Enhanced Rich Planetary Telemetry & AI Intel Card -->
+    <aside class="planet-info-panel glass-panel show-all-content" id="planet-info-panel">
+      <!-- Mobile Bottom Sheet Drag Handle -->
+      <div class="sheet-drag-handle" id="sheet-drag-handle">
+        <span class="drag-pill"></span>
+      </div>
+
+      <div class="planet-card-header">
+        <button id="btn-prev-planet" class="planet-nav-arrow" title="Previous Body (←)">◀</button>
+        <div class="planet-identity">
+          <span class="planet-type-tag" id="card-planet-type">TERRESTRIAL PLANET</span>
+          <h2 class="planet-title" id="card-planet-name">EARTH</h2>
+        </div>
+        <button id="btn-next-planet" class="planet-nav-arrow" title="Next Body (→)">▶</button>
+        <button id="btn-close-planet-card" class="panel-close-btn" title="Close Panel">✕</button>
+      </div>
+
+      <!-- Tabbed Console: ALL CONTENT, SPECS, ATMOSPHERE, AI INTEL, MISSIONS -->
+      <div class="telemetry-tabs">
+        <button class="telemetry-tab active" data-tab="all" id="tab-btn-all">ALL CONTENT</button>
+        <button class="telemetry-tab" data-tab="specs" id="tab-btn-specs">SPECS</button>
+        <button class="telemetry-tab" data-tab="atmosphere" id="tab-btn-atmosphere">ATMOSPHERE</button>
+        <button class="telemetry-tab" data-tab="ai-intel" id="tab-btn-ai">AI INTEL</button>
+        <button class="telemetry-tab" data-tab="missions" id="tab-btn-missions">MISSIONS</button>
+      </div>
+
+      <!-- Scrollable Dossier Body for Viewing All Text Features -->
+      <div class="dossier-scroll-area" id="dossier-scroll-area">
+        <!-- Tab 1: Physical & Orbital Specs -->
+        <div class="tab-content active" id="tab-content-specs">
+          <div class="section-banner">
+            <span class="banner-tag">// 01</span>
+            <span class="banner-title">PHYSICAL &amp; ORBITAL SPECS</span>
+          </div>
+          <div class="planet-data-grid">
+            <div class="data-item">
+              <span class="data-label">DISTANCE FROM SUN</span>
+              <span class="data-val" id="card-distance">149.6M km (1.00 AU)</span>
+            </div>
+            <div class="data-item">
+              <span class="data-label">DIAMETER</span>
+              <span class="data-val" id="card-diameter">12,742 km</span>
+            </div>
+            <div class="data-item">
+              <span class="data-label">PLANETARY MASS</span>
+              <span class="data-val" id="card-mass">5.972 × 10²⁴ kg</span>
+            </div>
+            <div class="data-item">
+              <span class="data-label">SURFACE GRAVITY</span>
+              <span class="data-val" id="card-gravity">9.81 m/s² (1.00g)</span>
+            </div>
+            <div class="data-item">
+              <span class="data-label">ESCAPE VELOCITY</span>
+              <span class="data-val" id="card-escape">11.19 km/s</span>
+            </div>
+            <div class="data-item">
+              <span class="data-label">ORBITAL PERIOD</span>
+              <span class="data-val" id="card-orbit-period">365.25 Days</span>
+            </div>
+            <div class="data-item">
+              <span class="data-label">ROTATION PERIOD</span>
+              <span class="data-val" id="card-rotation-period">24.00 Hours</span>
+            </div>
+            <div class="data-item">
+              <span class="data-label">AXIAL TILT</span>
+              <span class="data-val" id="card-tilt">23.44°</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Atmospheric Composition & Climate -->
+        <div class="tab-content" id="tab-content-atmosphere">
+          <div class="section-banner">
+            <span class="banner-tag">// 02</span>
+            <span class="banner-title">ATMOSPHERE &amp; CLIMATOLOGY</span>
+          </div>
+          <div class="atmosphere-details">
+            <div class="atmo-metric">
+              <span class="data-label">SURFACE PRESSURE</span>
+              <span class="data-val highlight-val" id="card-pressure">1.013 bar (1 atm)</span>
+            </div>
+            <div class="atmo-metric">
+              <span class="data-label">SURFACE TEMPERATURE RANGE</span>
+              <span class="data-val highlight-val" id="card-temp">-88°C to +58°C (Mean 15°C)</span>
+            </div>
+            <div class="data-label atmo-comp-label">GAS COMPOSITION BREAKDOWN</div>
+            <div class="atmo-bars" id="atmo-bars-container">
+              <!-- Dynamically populated gas meters -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: AI Planetary Analysis & Geological Highlights -->
+        <div class="tab-content" id="tab-content-ai">
+          <div class="section-banner">
+            <span class="banner-tag">// 03</span>
+            <span class="banner-title">NEURAL RECON &amp; GEOLOGY</span>
+          </div>
+          <div class="ai-intel-box">
+            <div class="ai-header">
+              <span class="ai-chip">NEURAL RECON</span>
+              <span class="ai-badge" id="card-ai-status">OPTIMAL BIOSPHERE</span>
+            </div>
+            <p class="ai-summary-text" id="card-ai-summary">
+              Earth possesses a dynamic geodynamo generating a protective magnetosphere, liquid hydrosphere covering 71% of the surface, and active tectonic recycling. Only confirmed planetary biosphere in the known cosmos.
+            </p>
+            <div class="ai-geology-note">
+              <span class="geo-title">NOTABLE GEOLOGICAL ANOMALIES:</span>
+              <span class="geo-desc" id="card-ai-geology">Liquid oceans, continental plate tectonics, persistent oxygenated troposphere.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Exploration History & Missions -->
+        <div class="tab-content" id="tab-content-missions">
+          <div class="section-banner">
+            <span class="banner-tag">// 04</span>
+            <span class="banner-title">EXPLORATION &amp; HISTORIC MISSIONS</span>
+          </div>
+          <div class="missions-container" id="card-missions-container">
+            <!-- Dynamically populated historic missions -->
+          </div>
+        </div>
+      </div>
+
+      <div class="planet-card-actions">
+        <button id="btn-inspect-planet" class="btn-card-action">
+          <span>✌ ENTER ORBIT INSPECT</span>
+        </button>
+        <button id="btn-overview-return" class="btn-card-action secondary">
+          <span>✊ RESET TO SYSTEM</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Gesture Guide Drawer (Top Right / Collapsible) -->
+    <div class="gesture-guide-panel glass-panel" id="gesture-guide-panel">
+      <div class="guide-toggle-bar" id="btn-toggle-guide">
+        <div class="guide-title-wrap">
+          <span class="guide-crest">✦</span>
+          <span class="guide-title">GESTURE MANUAL</span>
+        </div>
+        <span class="guide-chevron" id="guide-chevron">▾</span>
+      </div>
+
+      <div class="guide-body" id="guide-body">
+        <div class="guide-entry" data-gesture-type="point">
+          <span class="guide-icon">☝</span>
+          <div class="guide-text">
+            <span class="guide-name">POINT</span>
+            <span class="guide-desc">Select / Target planet</span>
+          </div>
+        </div>
+
+        <div class="guide-entry" data-gesture-type="pinch">
+          <span class="guide-icon">🤏</span>
+          <div class="guide-text">
+            <span class="guide-name">PINCH</span>
+            <span class="guide-desc">Grab planet / Move / Zoom</span>
+          </div>
+        </div>
+
+        <div class="guide-entry" data-gesture-type="palm">
+          <span class="guide-icon">✋</span>
+          <div class="guide-text">
+            <span class="guide-name">OPEN PALM</span>
+            <span class="guide-desc">Pause / Resume simulation</span>
+          </div>
+        </div>
+
+        <div class="guide-entry" data-gesture-type="twofinger">
+          <span class="guide-icon">✌</span>
+          <div class="guide-text">
+            <span class="guide-name">TWO FINGERS</span>
+            <span class="guide-desc">Orbit inspect planet</span>
+          </div>
+        </div>
+
+        <div class="guide-entry" data-gesture-type="swipe">
+          <span class="guide-icon">👋</span>
+          <div class="guide-text">
+            <span class="guide-name">SWIPE</span>
+            <span class="guide-desc">Rotate Solar System view</span>
+          </div>
+        </div>
+
+        <div class="guide-entry" data-gesture-type="fist">
+          <span class="guide-icon">✊</span>
+          <div class="guide-text">
+            <span class="guide-name">FIST</span>
+            <span class="guide-desc">System reset overview</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Master Bottom Command Deck: Gesture Badge + View/Warp Subbar directly on top of Planet Section -->
+    <div class="bottom-command-deck" id="bottom-command-deck">
+      <!-- Active Gesture Indicator Badge -->
+      <div class="gesture-badge-anchor" id="gesture-badge-anchor">
+        <div class="gesture-badge glass-panel" id="gesture-badge">
+          <div class="badge-crest">◆</div>
+          <div class="badge-content">
+            <span class="badge-sub">DETECTED GESTURE</span>
+            <span class="badge-name" id="gesture-name-display">POINT // TARGETING</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Controls Subbar: View Modes & Warp Speed (Directly ON TOP of bottom planet section) -->
+      <section class="command-subbar glass-panel" id="command-subbar">
+        <!-- Camera Perspective Modes -->
+        <div class="subbar-group view-modes">
+          <span class="subbar-label">VIEW:</span>
+          <button class="subbar-btn active" data-view-mode="overview" id="btn-view-overview" title="Full System Overview">
+            <span>🌐 OVERVIEW</span>
+          </button>
+          <button class="subbar-btn" data-view-mode="orrery" id="btn-view-orrery" title="Top-Down Orbital Plane">
+            <span>🔭 ORRERY</span>
+          </button>
+          <button class="subbar-btn" data-view-mode="sun" id="btn-view-sun" title="Central Star Close-Up">
+            <span>☀️ SOL</span>
+          </button>
+        </div>
+
+        <div class="subbar-divider"></div>
+
+        <!-- Orbital Time Warp Multiplier -->
+        <div class="subbar-group speed-modes">
+          <span class="subbar-label">WARP:</span>
+          <button class="subbar-btn speed-btn" data-speed="0.5">0.5×</button>
+          <button class="subbar-btn speed-btn active" data-speed="1.0">1.0×</button>
+          <button class="subbar-btn speed-btn" data-speed="2.0">2.0×</button>
+          <button class="subbar-btn speed-btn" data-speed="5.0">5.0×</button>
+        </div>
+      </section>
+
+      <!-- Bottom Planet Section & Navigation Dock -->
+      <nav class="mobile-action-bar glass-panel" aria-label="Solar System Planet Navigation">
+        <!-- Direct Zoom Controls for Mobile -->
+        <button class="mobile-zoom-btn" id="mbtn-zoom-in" title="Zoom In (+)">
+          <span>+</span>
+        </button>
+        <button class="mobile-zoom-btn" id="mbtn-zoom-out" title="Zoom Out (−)">
+          <span>−</span>
+        </button>
+
+        <div class="mobile-divider"></div>
+
+        <!-- Planet Selector Pills with Real Color Previews -->
+        <div class="mobile-planets-scroll" id="mobile-planets-scroll">
+          <button class="mobile-nav-btn active" data-planet-index="-1" id="mbtn-sun" title="Sun (SOL)">
+            <span class="planet-swatch swatch-sun"></span>
+            <span class="m-label">Sun</span>
+          </button>
+          <button class="mobile-nav-btn" data-planet-index="0" title="Mercury">
+            <span class="planet-swatch swatch-mercury"></span>
+            <span class="m-label">Merc</span>
+          </button>
+          <button class="mobile-nav-btn" data-planet-index="1" title="Venus">
+            <span class="planet-swatch swatch-venus"></span>
+            <span class="m-label">Venus</span>
+          </button>
+          <button class="mobile-nav-btn" data-planet-index="2" title="Earth">
+            <span class="planet-swatch swatch-earth"></span>
+            <span class="m-label">Earth</span>
+          </button>
+          <button class="mobile-nav-btn" data-planet-index="moon" id="mbtn-moon" title="Earth's Moon (Luna)">
+            <span class="planet-swatch swatch-moon"></span>
+            <span class="m-label">Moon</span>
+          </button>
+          <button class="mobile-nav-btn" data-planet-index="3" title="Mars">
+            <span class="planet-swatch swatch-mars"></span>
+            <span class="m-label">Mars</span>
+          </button>
+          <button class="mobile-nav-btn" data-planet-index="4" title="Jupiter">
+            <span class="planet-swatch swatch-jupiter"></span>
+            <span class="m-label">Jup</span>
+          </button>
+          <button class="mobile-nav-btn" data-planet-index="5" title="Saturn">
+            <span class="planet-swatch swatch-saturn"></span>
+            <span class="m-label">Sat</span>
+          </button>
+          <button class="mobile-nav-btn" data-planet-index="6" title="Uranus">
+            <span class="planet-swatch swatch-uranus"></span>
+            <span class="m-label">Uran</span>
+          </button>
+          <button class="mobile-nav-btn" data-planet-index="7" title="Neptune">
+            <span class="planet-swatch swatch-neptune"></span>
+            <span class="m-label">Nept</span>
+          </button>
+        </div>
+
+        <div class="mobile-divider"></div>
+
+        <!-- Action Toggles -->
+        <button class="mobile-action-toggle" id="mbtn-info" title="Toggle Planet Dossier">
+          <span id="m-info-icon">📋</span>
+        </button>
+        <button class="mobile-action-toggle" id="mbtn-inspect" title="Orbit Inspect (✌)">
+          <span>✌</span>
+        </button>
+        <button class="mobile-action-toggle" id="mbtn-pause" title="Pause/Resume (Space)">
+          <span id="m-pause-icon">⏸</span>
+        </button>
+        <button class="mobile-action-toggle" id="mbtn-reset" title="Reset View (R)">
+          <span>↺</span>
+        </button>
+      </nav>
+    </div>
+  </main>
+
+  <!-- Hidden Video Element Feeds MediaPipe -->
+  <video id="webcam-video" playsinline muted autoplay></video>
+
+  <!-- Settings & Preferences Modal -->
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="modal-card glass-panel settings-card">
+      <div class="modal-header">
+        <span class="modal-crest">⚙</span>
+        <h3>SOLAR CONTROL PREFERENCES</h3>
+        <button id="btn-close-settings" class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body settings-list">
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Holographic Hand Skeleton Overlay</span>
+            <span class="setting-desc">Render laser vector skeleton directly over scene</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-skeleton-render" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Optical Tracking Sensitivity</span>
+            <span class="setting-desc">Smoothing vs responsive cursor tracking</span>
+          </div>
+          <input type="range" id="range-sensitivity" min="1" max="5" value="3" class="styled-range" />
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Synthesizer Sound Effects</span>
+            <span class="setting-desc">Target lock beeps, grab hums, and pause drops (M)</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-audio-enabled" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Horizontal Mirroring</span>
+            <span class="setting-desc">Flip tracking coordinate axes for natural perspective</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-camera-mirror" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-name">Asteroid Belt Density</span>
+            <span class="setting-desc">Orbiting rocky bodies between Mars and Jupiter</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-asteroids" checked />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-save-settings" class="btn-command-primary">
+          <span>APPLY CONFIGURATION</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Command Notification Toast -->
+  <div id="toast" class="toast-notification hidden">
+    <span class="toast-crest">◆</span>
+    <span id="toast-message">Notification message</span>
+  </div>
+
+  <!-- Master Application Script -->
+  <script src="app.js"></script>
+</body>
+</html>
